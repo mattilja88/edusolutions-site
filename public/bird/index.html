@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>Unity Web Player | Math Bird Adventure</title>
+  <link rel="shortcut icon" href="TemplateData/favicon.ico" />
+  <link rel="stylesheet" href="TemplateData/style.css" />
+
+  <style>
+    html, body { margin:0; height:100%; background:#000; }
+    #unity-container {
+      display:grid; place-items:center; width:100vw; height:100vh;
+    }
+    /* 16:9 contain -skaalaus */
+    #unity-fit {
+      width:100vw; height:100vh;
+      max-width:calc(100vh * (16 / 9));
+      max-height:calc(100vw * (9 / 16));
+    }
+    /* pakota canvas täyttämään fit-laatikko */
+    #unity-fit > canvas, #unity-canvas {
+      width:100% !important; height:100% !important; display:block;
+    }
+  </style>
+</head>
+<body>
+  <div id="unity-container" class="unity-desktop">
+    <div id="unity-fit">
+      <canvas id="unity-canvas" width="1920" height="1080" tabindex="-1"></canvas>
+
+      <div id="unity-loading-bar">
+        <div id="unity-logo"></div>
+        <div id="unity-progress-bar-empty">
+          <div id="unity-progress-bar-full"></div>
+        </div>
+      </div>
+      <div id="unity-warning"></div>
+      <div id="unity-footer">
+        <div id="unity-logo-title-footer"></div>
+        <div id="unity-fullscreen-button"></div>
+        <div id="unity-build-title">Math Bird Adventure</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.querySelector("#unity-canvas");
+
+    function unityShowBanner(msg, type) {
+      const warningBanner = document.querySelector("#unity-warning");
+      function update() {
+        warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+      }
+      const div = document.createElement('div');
+      div.innerHTML = msg;
+      warningBanner.appendChild(div);
+      if (type == 'error') div.style = 'background:red; padding:10px;';
+      else {
+        if (type == 'warning') div.style = 'background:yellow; padding:10px;';
+        setTimeout(() => { warningBanner.removeChild(div); update(); }, 5000);
+      }
+      update();
+    }
+
+    const buildUrl = "Build";
+    const loaderUrl = buildUrl + "/MathBirdAdventures_1.1.loader.js";      // ← TARKISTA NIMI
+    const config = {
+      dataUrl:      buildUrl + "/MathBirdAdventures_1.1.data.unityweb",    // ← TARKISTA NIMI
+      frameworkUrl: buildUrl + "/MathBirdAdventures_1.1.framework.js.unityweb", // ← TARKISTA NIMI
+      codeUrl:      buildUrl + "/MathBirdAdventures_1.1.wasm.unityweb",    // ← TARKISTA NIMI
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "EduSolutions",
+      productName: "Math Bird Adventure",
+      productVersion: "1.3",
+      showBanner: unityShowBanner,
+      matchWebGLToCanvasSize: true,
+      devicePixelRatio: 1
+    };
+
+    // Mobiili-meta + luokat
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      const meta = document.createElement('meta');
+      meta.name = 'viewport';
+      meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+      document.head.appendChild(meta);
+      document.querySelector("#unity-container").className = "unity-mobile";
+      canvas.className = "unity-mobile";
+      // config.devicePixelRatio = 1; // halutessa
+    } else {
+      // ÄLÄ pakota kiinteää kokoa desktopilla
+      // canvas.style.width = "1920px";
+      // canvas.style.height = "1080px";
+    }
+
+    document.querySelector("#unity-loading-bar").style.display = "block";
+
+    const script = document.createElement("script");
+    script.src = loaderUrl + "?v=" + Date.now(); // cache-busting
+    script.onload = () => {
+      createUnityInstance(canvas, config, (p) => {
+        document.querySelector("#unity-progress-bar-full").style.width = (100 * p) + "%";
+      }).then((unityInstance) => {
+        document.querySelector("#unity-loading-bar").style.display = "none";
+        document.querySelector("#unity-fullscreen-button").onclick = () => unityInstance.SetFullscreen(1);
+      }).catch((message) => {
+        alert(message);
+      });
+    };
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>
