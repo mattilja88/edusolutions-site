@@ -29,6 +29,7 @@
         display: grid;
         place-items: center;
         background: #000;
+        position: relative; 
       }
 
       /* Canvas täyttää fit-laatikon */
@@ -51,6 +52,17 @@
       @media (orientation: portrait) {
         #unity-fit { height: min(96svh, calc(100svw * (9/16))); }
       }
+
+      /* HUD pelaajan näyttöön (vain testiä varten) */
+      #hud {
+        position:absolute; top:10px; left:10px;
+        padding:6px 10px; border-radius:8px;
+        background:rgba(255,255,255,.85); color:#222; font:600 14px/1.2 system-ui;
+        z-index:1000;
+        pointer-events: none;
+      }
+      #hud small { display:block; font:500 11px/1.1 system-ui; color:#555; }
+
     </style>
   </head>
   <body>
@@ -64,7 +76,10 @@
             <div id="unity-progress-bar-full"></div>
           </div>
         </div>
-
+        <div id="hud" style="display:none">
+          <small>Pelaaja</small><span id="hud-name">–</span>
+        </div>
+        
         <div id="unity-warning"></div>
 
         <div id="unity-footer">
@@ -76,6 +91,43 @@
     </div>
 
     <script>
+      const UNITY_PARENT_ORIGIN = window.location.origin; // ok jos samassa originissa
+      let pendingInitPayload = null;
+
+      function forwardInitToUnity(payload) {
+        try {
+          // --- TESTI: näytä HUDissa ---
+          const hud = document.getElementById("hud");
+          const hudName = document.getElementById("hud-name");
+          if (hud && hudName) {
+            hud.style.display = "block";
+            hudName.textContent = payload?.user?.displayName || payload?.user?.userId || "(tuntematon)";
+          }
+          console.log("[Bridge] INIT vastaanotettu", payload);
+
+          if (!window.unityInstance || !window.unityInstance.SendMessage) {
+            pendingInitPayload = payload; // Unity ei vielä valmis → puskuriin
+            return;
+          }
+          const json = JSON.stringify({
+            user: payload.user,
+            gameToken: payload.gameToken,
+          });
+          console.log("[Bridge] Lähetetään Unitylle SendMessage GameManager.InitFromJson");
+          window.unityInstance.SendMessage("GameManager", "InitFromJson", json);
+        } catch (e) {
+          console.error("Init forward failed:", e);
+        }
+      }
+
+
+      // Vastaanota INIT Reactilta
+      window.addEventListener("message", (ev) => {
+        // Turvallisempi: tarkista origin jos eri domain
+        // if (ev.origin !== UNITY_PARENT_ORIGIN) return;
+        if (!ev.data || ev.data.type !== "INIT") return;
+        forwardInitToUnity(ev.data);
+      });
       const canvas = document.querySelector("#unity-canvas");
 
       function unityShowBanner(msg, type) {
@@ -128,6 +180,18 @@
         }).then((unityInstance) => {
           document.querySelector("#unity-loading-bar").style.display = "none";
           document.querySelector("#unity-fullscreen-button").onclick = () => unityInstance.SetFullscreen(1);
+          // --- Bridge: ilmoita Reactille että Unity on valmis ja tallenna instanssi ---
+          window.unityInstance = unityInstance;
+          try {
+            window.parent?.postMessage({ type: "UNITY_READY" }, UNITY_PARENT_ORIGIN);
+          } catch (e) {
+            console.warn("Could not post UNITY_READY:", e);
+          }
+          // Jos INIT ehti tulla ennen kuin Unity oli valmis, lähetä se nyt perille
+          if (pendingInitPayload) {
+            forwardInitToUnity(pendingInitPayload);
+            pendingInitPayload = null;
+          }
         }).catch((message) => {
           alert(message);
         });

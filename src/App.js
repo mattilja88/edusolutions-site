@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { apiPost } from "./config/api"; // säädä polku suhteessa tähän tiedostoon
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { apiPost, API_BASE_URL  } from "./config/api"; // säädä polku suhteessa tähän tiedostoon
 
 
 export default function App() {
@@ -14,8 +14,8 @@ export default function App() {
   
   const games = useMemo(
     () => [
-      { title: "MathMaster", src: "/unity/index.html" },
-      { title: "MathBirdAdventure", src: "/bird/index.html" },
+      { title: "MathMaster", gameId: "math-master", src: "/unity/index.html" },
+      { title: "MathBirdAdventure", gameId: "math-bird", src: "/bird/index.html" },
     ],
     []
   );
@@ -30,6 +30,7 @@ export default function App() {
             onClick={() => {
               localStorage.removeItem("jwt");
               localStorage.removeItem("username");
+              setSelectedGame(null);
               setUser(null);
             }}
           >
@@ -76,6 +77,8 @@ export default function App() {
         <GameFrame
           title={selectedGame.title}
           src={selectedGame.src}
+          gameId={selectedGame.gameId}
+          user={user}
           onBack={() => setSelectedGame(null)}
         />
       </>
@@ -160,7 +163,6 @@ function Popup({ type, onClose, setUser }) {
           onChange={(e) => setPassword(e.target.value)} 
         />
         <div style={styles.popupButtons}>
-        <div style={styles.popupButtons}>
           <button
             style={styles.submitBtn}
             disabled={loading /* tai || !username || !password */}
@@ -178,7 +180,6 @@ function Popup({ type, onClose, setUser }) {
         )}
         </div>
       </div>
-    </div>
   );
 }
 
@@ -205,10 +206,56 @@ function Menu({ games, onOpen }) {
 
 /* ---------- PELI ---------- */
 
-function GameFrame({ title, src, onBack }) {
+function GameFrame({ title, src, gameId, user, onBack }) {
+  const UNITY_ORIGIN = window.location.origin;
+  const iframeRef = useRef(null);
+  const [gameToken, setGameToken] = useState(null);
   const isMobile =
     /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ||
     (typeof window !== "undefined" && window.innerWidth < 768);
+
+    useEffect(() => {
+        // Ei käyttäjää → ei hakua
+        if (!user || !user.username || !gameId) return;
+        let aborted = false;
+        (async () => {
+          try {
+            const jwt = localStorage.getItem("jwt");
+            const res = await fetch(`${API_BASE_URL}/api/me/game-token?gameId=${encodeURIComponent(gameId)}`, {
+              method: "GET",
+              headers: {
+                "Authorization": jwt ? `Bearer ${jwt}` : "",
+              },
+              credentials: "include",
+            });
+            if (!res.ok) throw new Error("Game token haku epäonnistui");
+            const data = await res.json(); // odotetaan: { gameToken: "..." }
+            if (!aborted) setGameToken(data.gameToken);
+          } catch (e) {
+            console.error(e);
+          }
+      })();
+    return () => { aborted = true; };
+  }, [user, gameId]);
+
+    useEffect(() => {
+        function onMessage(ev) {
+          if (!iframeRef.current || ev.source !== iframeRef.current.contentWindow) return;
+          if (ev.data?.type !== "UNITY_READY") return;
+          if (!user || !user.username || !gameToken) return;
+    
+          const payload = {
+            type: "INIT",
+            user: { userId: user.username, displayName: user.username },
+            gameToken,
+          };
+          iframeRef.current.contentWindow.postMessage(payload, UNITY_ORIGIN);
+        }
+        window.addEventListener("message", onMessage);
+        return () => window.removeEventListener("message", onMessage);
+    }, [user, gameToken]);
+    
+      
 
   return (
     <div style={styles.gameWrap}>
@@ -217,7 +264,13 @@ function GameFrame({ title, src, onBack }) {
       </button>
       {!isMobile && <h2 style={styles.gameTitle}>{title}</h2>}
       <div style={styles.fit16x9}>
-        <iframe title={title} src={src} allow="fullscreen; autoplay; gamepad" style={styles.iframeFill} />
+        <iframe
+          ref={iframeRef}
+          title={title}
+          src={src}
+          allow="fullscreen; autoplay; gamepad"
+          style={styles.iframeFill}
+        />
       </div>
     </div>
   );
