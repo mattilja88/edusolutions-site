@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { apiPost, API_BASE_URL  } from "./config/api"; // säädä polku suhteessa tähän tiedostoon
+import { puhdasNimimerkki } from "./utils/puhdasNimimerkki";
 
 
 export default function App() {
@@ -111,6 +112,11 @@ function Popup({ type, onClose, setUser }) {
     }
     try {
       setLoading(true);
+      const check = puhdasNimimerkki(username);
+      if (!check.ok) {
+        alert(check.reason);
+        return;
+      }
       const data = await apiPost("/api/accounts/register", { username, password });
       // Kevyt palaute; tässä ei vielä toiminnallisuuksia
       alert(`Käyttäjä luotu: ${data.username}`);

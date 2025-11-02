@@ -3,37 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Unity Web Player | MathGame</title>
+    <title>MathGame</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico" />
     <link rel="stylesheet" href="TemplateData/style.css" />
 
     <style>
       :root { color-scheme: dark; }
-      html, body { margin:0; height:100%; background:#000; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
 
-      /* Keskityslaatikko koko näkymään */
       #unity-container {
         width: 100svw;
         height: 100svh;
         display: grid;
         place-items: center;
         background: #000;
-        overflow: hidden;
-        touch-action: none; /* estä vahinkoskrollaus pelin päällä */
       }
 
-      /* “Fit”-laatikko: 16:9 ja enintään ruudun kokoinen (contain) */
       #unity-fit {
-        width: min(100svw, calc(100svh * (16/9)));
-        height: min(100svh, calc(100svw * (9/16)));
+        width: min(100svw, calc(100svh * (16 / 9)));
+        height: min(100svh, calc(100svw * (9 / 16)));
         display: grid;
         place-items: center;
+        position: relative;
         background: #000;
-        position: relative; 
       }
 
-      /* Canvas täyttää fit-laatikon */
-      #unity-fit > canvas,
       #unity-canvas {
         width: 100% !important;
         height: 100% !important;
@@ -41,30 +40,38 @@
         background: #000;
       }
 
-      /* Latauspalkki ja footer sisälle samaan fit-laatikkoon */
       #unity-loading-bar,
       #unity-footer,
       #unity-warning {
-        position: relative; /* pysyvät fit-laatikon sisällä */
+        position: relative;
       }
 
-      /* Pieni turvavara mobiilin osoitepalkin takia */
       @media (orientation: portrait) {
-        #unity-fit { height: min(96svh, calc(100svw * (9/16))); }
+        #unity-fit { height: min(96svh, calc(100svw * (9 / 16))); }
       }
 
-      /* HUD pelaajan näyttöön (vain testiä varten) */
       #hud {
-        position:absolute; top:10px; left:10px;
-        padding:6px 10px; border-radius:8px;
-        background:rgba(255,255,255,.85); color:#222; font:600 14px/1.2 system-ui;
-        z-index:1000;
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: rgba(255,255,255,.85);
+        color: #222;
+        font: 600 14px/1.2 system-ui;
+        z-index: 1000;
         pointer-events: none;
+        display: none;
       }
-      #hud small { display:block; font:500 11px/1.1 system-ui; color:#555; }
 
+      #hud small {
+        display: block;
+        font: 500 11px/1.1 system-ui;
+        color: #555;
+      }
     </style>
   </head>
+
   <body>
     <div id="unity-container">
       <div id="unity-fit">
@@ -76,10 +83,11 @@
             <div id="unity-progress-bar-full"></div>
           </div>
         </div>
-        <div id="hud" style="display:none">
+
+        <div id="hud">
           <small>Pelaaja</small><span id="hud-name">–</span>
         </div>
-        
+
         <div id="unity-warning"></div>
 
         <div id="unity-footer">
@@ -91,28 +99,36 @@
     </div>
 
     <script>
-      const UNITY_PARENT_ORIGIN = window.location.origin; // ok jos samassa originissa
+      const UNITY_PARENT_ORIGIN = window.location.origin;
       let pendingInitPayload = null;
+
+      // Vastaanota käyttäjä + token Reactista
+      window.addEventListener("message", (ev) => {
+        if (!ev.data || ev.data.type !== "INIT") return;
+        console.log("[Bridge] INIT vastaanotettu", ev.data);
+        forwardInitToUnity(ev.data);
+      });
 
       function forwardInitToUnity(payload) {
         try {
-          // --- TESTI: näytä HUDissa ---
           const hud = document.getElementById("hud");
           const hudName = document.getElementById("hud-name");
           if (hud && hudName) {
             hud.style.display = "block";
-            hudName.textContent = payload?.user?.displayName || payload?.user?.userId || "(tuntematon)";
+            hudName.textContent =
+              payload?.user?.displayName || payload?.user?.userId || "(tuntematon)";
           }
-          console.log("[Bridge] INIT vastaanotettu", payload);
 
           if (!window.unityInstance || !window.unityInstance.SendMessage) {
-            pendingInitPayload = payload; // Unity ei vielä valmis → puskuriin
+            pendingInitPayload = payload;
             return;
           }
+
           const json = JSON.stringify({
             user: payload.user,
             gameToken: payload.gameToken,
           });
+
           console.log("[Bridge] Lähetetään Unitylle SendMessage GameManager.InitFromJson");
           window.unityInstance.SendMessage("GameManager", "InitFromJson", json);
         } catch (e) {
@@ -120,81 +136,82 @@
         }
       }
 
-
-      // Vastaanota INIT Reactilta
-      window.addEventListener("message", (ev) => {
-        // Turvallisempi: tarkista origin jos eri domain
-        // if (ev.origin !== UNITY_PARENT_ORIGIN) return;
-        if (!ev.data || ev.data.type !== "INIT") return;
-        forwardInitToUnity(ev.data);
-      });
-      const canvas = document.querySelector("#unity-canvas");
-
+      // Unityn varoitusbanneri
       function unityShowBanner(msg, type) {
         const warningBanner = document.querySelector("#unity-warning");
         const update = () => {
-          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+          warningBanner.style.display = warningBanner.children.length ? "block" : "none";
         };
-        const div = document.createElement('div');
+        const div = document.createElement("div");
         div.innerHTML = msg;
         warningBanner.appendChild(div);
-        if (type == 'error') div.style = 'background:red; padding:10px;';
+        if (type == "error") div.style = "background:red; padding:10px;";
         else {
-          if (type == 'warning') div.style = 'background:yellow; padding:10px;';
-          setTimeout(() => { warningBanner.removeChild(div); update(); }, 5000);
+          if (type == "warning") div.style = "background:yellow; padding:10px;";
+          setTimeout(() => {
+            warningBanner.removeChild(div);
+            update();
+          }, 5000);
         }
         update();
       }
 
+      /* --- 🔧 Nämä vastaa buildikansiosi tiedostoja --- */
       const buildUrl = "Build";
-      const loaderUrl   = buildUrl + "/164e7ed32ecd8b2a31fccdea9f4d2e1d.loader.js";
+      const loaderUrl   = buildUrl + "/afea2bd3f861ab3670cee1d39fcd2869.loader.js?v=" + Date.now();
       const config = {
         arguments: [],
-        dataUrl:      buildUrl + "/e7f3d78ae5dfcf8e5943f5433b659a25.data.unityweb",
-        frameworkUrl: buildUrl + "/e2be27271c2b49dc4813da9df5ea8545.framework.js.unityweb",
-        codeUrl:      buildUrl + "/6a98d57b4c36bb92ea7d61a0dc016e9f.wasm.unityweb",
+        dataUrl:      buildUrl + "/e909d927c7a379ba6aad186ef03bfc73.data.unityweb",
+        frameworkUrl: buildUrl + "/0dca9cc0987128fd2d5f24646a9b9851.framework.js.unityweb",
+        codeUrl:      buildUrl + "/669e824f2561cf1cc480df50d4fe35cb.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "MathGame",
         productVersion: "1.0",
         showBanner: unityShowBanner,
         matchWebGLToCanvasSize: true,
-        devicePixelRatio: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 1 : window.devicePixelRatio
+        devicePixelRatio: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+          ? 1
+          : window.devicePixelRatio,
       };
 
-      // Mobiili: lisää viewport-meta ja kevyt DPI
+      // Mobiiliasetus
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        const meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+        const meta = document.createElement("meta");
+        meta.name = "viewport";
+        meta.content =
+          "width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes";
         document.head.appendChild(meta);
       }
 
       document.querySelector("#unity-loading-bar").style.display = "block";
 
       const script = document.createElement("script");
-      script.src = loaderUrl + "?v=" + Date.now(); // cache-busting
+      script.src = loaderUrl;
       script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          document.querySelector("#unity-progress-bar-full").style.width = (100 * progress) + "%";
-        }).then((unityInstance) => {
-          document.querySelector("#unity-loading-bar").style.display = "none";
-          document.querySelector("#unity-fullscreen-button").onclick = () => unityInstance.SetFullscreen(1);
-          // --- Bridge: ilmoita Reactille että Unity on valmis ja tallenna instanssi ---
-          window.unityInstance = unityInstance;
-          try {
-            window.parent?.postMessage({ type: "UNITY_READY" }, UNITY_PARENT_ORIGIN);
-          } catch (e) {
-            console.warn("Could not post UNITY_READY:", e);
-          }
-          // Jos INIT ehti tulla ennen kuin Unity oli valmis, lähetä se nyt perille
-          if (pendingInitPayload) {
-            forwardInitToUnity(pendingInitPayload);
-            pendingInitPayload = null;
-          }
-        }).catch((message) => {
-          alert(message);
-        });
+        createUnityInstance(document.querySelector("#unity-canvas"), config, (progress) => {
+          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+        })
+          .then((unityInstance) => {
+            document.querySelector("#unity-loading-bar").style.display = "none";
+            document.querySelector("#unity-fullscreen-button").onclick = () =>
+              unityInstance.SetFullscreen(1);
+            window.unityInstance = unityInstance;
+
+            try {
+              window.parent?.postMessage({ type: "UNITY_READY" }, UNITY_PARENT_ORIGIN);
+            } catch (e) {
+              console.warn("Could not post UNITY_READY:", e);
+            }
+
+            if (pendingInitPayload) {
+              forwardInitToUnity(pendingInitPayload);
+              pendingInitPayload = null;
+            }
+          })
+          .catch((message) => {
+            alert(message);
+          });
       };
       document.body.appendChild(script);
     </script>
