@@ -10,28 +10,57 @@
   <style>
     :root { color-scheme: dark; }
     html, body { margin:0; height:100%; background:#000; }
-  
+
     /* Täyttölaatikko, joka keskittää pelin */
     #unity-container {
       width: 100svw; height: 100svh;
       display: grid; place-items: center;
       background: #000;
       touch-action: none;             /* estää sivun skrollailun pelin päällä */
+      overflow: hidden;
     }
-  
+
     /* “fit”-laatikko, joka säilyttää 16:9 ja mahtuu näyttöön */
     #unity-fit {
       width: min(100svw, calc(100svh * (16/9)));
       height: min(100svh, calc(100svw * (9/16)));
+      display: grid; place-items: center;
+      position: relative;
+      background: #000;
     }
-  
+
     /* Canvas täyttää fit-laatikon */
     #unity-fit > canvas, #unity-canvas {
       width: 100% !important;
       height: 100% !important;
       display: block;
+      background: #000;
     }
-  </style>  
+
+    /* --- HUD pelaajalle (valinnainen, näkyy kun INIT tulee) --- */
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(255,255,255,.85);
+      color: #222;
+      font: 600 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      z-index: 1000;
+      pointer-events: none;
+      display: none; /* näytetään kun INIT saapuu */
+    }
+    #hud small {
+      display: block;
+      font: 500 11px/1.1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: #555;
+    }
+
+    @media (orientation: portrait) {
+      #unity-fit { height: min(96svh, calc(100svw * (9/16))); }
+    }
+  </style>
 </head>
 <body>
   <div id="unity-container" class="unity-desktop">
@@ -44,6 +73,12 @@
           <div id="unity-progress-bar-full"></div>
         </div>
       </div>
+
+      <!-- ✅ HUD pelaajanimelle -->
+      <div id="hud">
+        <small>Pelaaja</small><span id="hud-name">–</span>
+      </div>
+
       <div id="unity-warning"></div>
       <div id="unity-footer">
         <div id="unity-logo-title-footer"></div>
@@ -53,6 +88,101 @@
     </div>
   </div>
 
+  <!-- 🔗 React–Unity -silta BrowserBridgeen -->
+  <script>
+    // Salli vain sama origin (säädä tarvittaessa kovakoodatuksi odotetuksi originiksi)
+    const UNITY_PARENT_ORIGIN = window.location.origin;
+    let pendingInitPayload = null;
+
+    // Poista JSON-ongelmat (undefined / NaN / Infinity)
+    function safeStringify(obj) {
+      return JSON.stringify(obj, (k, v) => {
+        if (typeof v === "number" && !Number.isFinite(v)) return null;
+        if (v === undefined) return null;
+        return v;
+      });
+    }
+
+    // Vastaanota viestit Reactista
+    window.addEventListener("message", (ev) => {
+      if (!ev || !ev.data) return;
+      const { type } = ev.data;
+      if (type === "INIT") {
+        console.debug("[Bridge] INIT vastaanotettu", ev.data);
+        forwardInitToUnity(ev.data);
+      } else if (type === "TOKEN_UPDATE") {
+        forwardTokenToUnity(ev.data);
+      } else if (type === "SESSION_END") {
+        forwardSessionEndToUnity();
+      }
+    });
+
+    function forwardInitToUnity(payload) {
+    try {
+      // ✅ Näytä HUD vain jos meillä ON nimi
+      const hud = document.getElementById("hud");
+      const hudName = document.getElementById("hud-name");
+      const nameToShow = payload?.user?.displayName || payload?.user?.userId;
+      if (hud && hudName) {
+        if (nameToShow) {
+          hud.style.display = "block";
+          hudName.textContent = nameToShow;
+        } else {
+          hud.style.display = "none"; // ei näytetä ennen profiilin hakua
+        }
+      }
+
+      if (!window.unityInstance?.SendMessage) {
+        pendingInitPayload = payload;
+        return;
+      }
+
+      // 🔹 LISÄYS: apiBase viedään Unityyn
+      const safePayload = {
+        type: "INIT",
+        user: (payload && typeof payload.user === "object") ? payload.user : null, // voi olla null
+        gameToken: (typeof payload?.gameToken === "string") ? payload.gameToken : null,
+        gameId: (typeof payload?.gameId === "string") ? payload.gameId : "math-bird",
+        apiBase: (typeof payload?.apiBase === "string") ? payload.apiBase : null,   // << tämä
+      };
+
+      const json = safeStringify(safePayload);
+      console.debug("[Bridge] Send → BrowserBridge.OnInit", json);
+      window.unityInstance.SendMessage("BrowserBridge", "OnInit", json);
+    } catch (e) {
+      console.error("Init forward failed:", e);
+    }
+  }
+
+
+    // (valinnainen) tokenin päivitys
+    function forwardTokenToUnity(payload) {
+      try {
+        if (!window.unityInstance?.SendMessage) return;
+        const json = safeStringify({
+          type: "TOKEN_UPDATE",
+          gameToken: (typeof payload?.gameToken === "string") ? payload.gameToken : null,
+        });
+        console.debug("[Bridge] Send → BrowserBridge.OnTokenUpdate", json);
+        window.unityInstance.SendMessage("BrowserBridge", "OnTokenUpdate", json);
+      } catch (e) {
+        console.error("Token update forward failed:", e);
+      }
+    }
+
+    // (valinnainen) sessionin päätös
+    function forwardSessionEndToUnity() {
+      try {
+        if (!window.unityInstance?.SendMessage) return;
+        console.debug("[Bridge] Send → BrowserBridge.OnSessionEnd");
+        window.unityInstance.SendMessage("BrowserBridge", "OnSessionEnd", "");
+      } catch (e) {
+        console.error("Session end forward failed:", e);
+      }
+    }
+  </script>
+
+  <!-- Unity bootstrap kuten ennen -->
   <script>
     const canvas = document.querySelector("#unity-canvas");
 
@@ -73,11 +203,12 @@
     }
 
     const buildUrl = "Build";
-    const loaderUrl = buildUrl + "/MathBirdAdventures_1.1.loader.js";      // ← TARKISTA NIMI
+    // Huom: vältä välilyöntejä tiedostonimissä tai käytä encodeURI
+    const loaderUrl = encodeURI(buildUrl + "/MathBirdAdventures5.11.v1.4.loader.js");
     const config = {
-      dataUrl:      buildUrl + "/MathBirdAdventures_1.1.data.unityweb",    // ← TARKISTA NIMI
-      frameworkUrl: buildUrl + "/MathBirdAdventures_1.1.framework.js.unityweb", // ← TARKISTA NIMI
-      codeUrl:      buildUrl + "/MathBirdAdventures_1.1.wasm.unityweb",    // ← TARKISTA NIMI
+      dataUrl:      encodeURI(buildUrl + "/MathBirdAdventures5.11.v1.4.data.unityweb"),
+      frameworkUrl: encodeURI(buildUrl + "/MathBirdAdventures5.11.v1.4.framework.js.unityweb"),
+      codeUrl:      encodeURI(buildUrl + "/MathBirdAdventures5.11.v1.4.wasm.unityweb"),
       streamingAssetsUrl: "StreamingAssets",
       companyName: "EduSolutions",
       productName: "Math Bird Adventure",
@@ -95,11 +226,6 @@
       document.head.appendChild(meta);
       document.querySelector("#unity-container").className = "unity-mobile";
       canvas.className = "unity-mobile";
-      // config.devicePixelRatio = 1; // halutessa
-    } else {
-      // ÄLÄ pakota kiinteää kokoa desktopilla
-      // canvas.style.width = "1920px";
-      // canvas.style.height = "1080px";
     }
 
     document.querySelector("#unity-loading-bar").style.display = "block";
@@ -112,6 +238,20 @@
       }).then((unityInstance) => {
         document.querySelector("#unity-loading-bar").style.display = "none";
         document.querySelector("#unity-fullscreen-button").onclick = () => unityInstance.SetFullscreen(1);
+        window.unityInstance = unityInstance;
+
+        // Ilmoita Reactille, että Unity on valmis
+        try {
+          window.parent?.postMessage({ type: "UNITY_READY" }, UNITY_PARENT_ORIGIN);
+        } catch (e) {
+          console.warn("Could not post UNITY_READY:", e);
+        }
+
+        // Jos INIT ehti tulla jo ennen kuin Unity oli valmis
+        if (pendingInitPayload) {
+          forwardInitToUnity(pendingInitPayload);
+          pendingInitPayload = null;
+        }
       }).catch((message) => {
         alert(message);
       });

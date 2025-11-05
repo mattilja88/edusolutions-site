@@ -98,80 +98,147 @@ export default function App() {
 
 function Popup({ type, onClose, setUser }) {
   const title = type === "login" ? "Kirjaudu" : "Luo tunnus";
+
+  // --- Lisätyt kentät rekisteriin ---
+  const INVITE_CODE = "OPETUS2025"; // <-- kevyt kovakoodaus fronttiin
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");   // uusi
+  const [inviteCode, setInviteCode] = useState(""); // uusi
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Yksinkertaiset validoinnit
+  const pwTooShort = password.length < 6;
+  const pwMismatch = password !== password2;
+  const codeInvalid = type === "register" && inviteCode.trim() !== INVITE_CODE;
+  const usernameEmpty = username.trim().length === 0;
+
   async function handleRegister() {
-    if (type !== "register") return; // vain rekisteröintiin
+    if (type !== "register") return;
     setError("");
-    if (!username || !password) {
-      setError("Täytä käyttäjänimi ja salasana.");
-      return;
-    }
+
+    // kevyt validointi ennen pyyntöä
+    if (usernameEmpty) return setError("Käyttäjänimi puuttuu.");
+    if (pwTooShort) return setError("Salasanan vähimmäispituus on 6 merkkiä.");
+    if (pwMismatch) return setError("Salasanat eivät täsmää.");
+    if (codeInvalid) return setError("Väärä kutsukoodi.");
+
     try {
       setLoading(true);
       const check = puhdasNimimerkki(username);
       if (!check.ok) {
-        alert(check.reason);
+        setError(check.reason);
         return;
       }
       const data = await apiPost("/api/accounts/register", { username, password });
-      // Kevyt palaute; tässä ei vielä toiminnallisuuksia
       alert(`Käyttäjä luotu: ${data.username}`);
       onClose();
     } catch (e) {
-      setError(e.message);
+      setError(e.message || "Rekisteröinti epäonnistui.");
     } finally {
       setLoading(false);
     }
   }
 
   async function handleLogin() {
-    if (type !== "login") return; // vain kirjautumiseen
+    if (type !== "login") return;
     setError("");
-    if (!username || !password) {
-      setError("Täytä käyttäjänimi ja salasana.");
-      return;
-    }
+
+    if (usernameEmpty) return setError("Käyttäjänimi puuttuu.");
+    if (password.length === 0) return setError("Salasana puuttuu.");
+
     try {
       setLoading(true);
       const { jwtToken } = await apiPost("/api/login", { username, password });
-      // talleta token (voi käyttää myöhemmin suojattuihin pyyntöihin)
       localStorage.setItem("jwt", jwtToken);
       localStorage.setItem("username", username);
-      setUser({ username }); // <-- tämä asetetaan App:iin (tuodaan kohta propseilla)
+      setUser({ username });
       onClose();
     } catch (e) {
-      setError(e.message);
+      setError(e.message || "Kirjautuminen epäonnistui.");
     } finally {
       setLoading(false);
     }
-  }  
+  }
+
+  const submitDisabled =
+    loading ||
+    usernameEmpty ||
+    (type === "login"
+      ? password.length === 0
+      : (pwTooShort || pwMismatch || codeInvalid));
 
   return (
     <div style={styles.popupWrap}>
       <div style={styles.popupBox}>
         <h3 style={styles.popupTitle}>{title}</h3>
-        <input 
-          type="text" 
-          placeholder="Käyttäjänimi" 
+
+        {/* käyttäjänimi */}
+        <input
+          type="text"
+          placeholder="Käyttäjänimi"
           style={styles.input}
           value={username}
-          onChange={(e) => setUsername(e.target.value)} 
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete={type === "login" ? "username" : "new-username"}
         />
-        <input 
-          type="password" 
-          placeholder="Salasana" 
+
+        {/* salasana */}
+        <input
+          type="password"
+          placeholder="Salasana"
           style={styles.input}
           value={password}
-          onChange={(e) => setPassword(e.target.value)} 
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete={type === "login" ? "current-password" : "new-password"}
         />
+
+        {/* vain rekisteröinnissä: salasana uudestaan + kutsukoodi */}
+        {type === "register" && (
+          <>
+            <input
+              type="password"
+              placeholder="Salasana uudelleen"
+              style={{
+                ...styles.input,
+                borderColor: password2.length === 0
+                  ? "#ccc"
+                  : (pwMismatch ? "#d32f2f" : "#4caf50"),
+              }}
+              value={password2}
+              onChange={(e) => setPassword2(e.target.value)}
+              autoComplete="new-password"
+            />
+            <input
+              type="text"
+              placeholder="Kutsukoodi"
+              style={{
+                ...styles.input,
+                borderColor: inviteCode.length === 0
+                  ? "#ccc"
+                  : (codeInvalid ? "#d32f2f" : "#4caf50"),
+              }}
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+            />
+            {/* pienet vihjeet */}
+            <div style={{ fontSize: "0.8rem", color: "#666", marginBottom: "0.4rem" }}>
+              Vihje: salasanassa vähintään 6 merkkiä.
+            </div>
+          </>
+        )}
+
         <div style={styles.popupButtons}>
           <button
-            style={styles.submitBtn}
-            disabled={loading /* tai || !username || !password */}
+            style={{
+              ...styles.submitBtn,
+              opacity: submitDisabled ? 0.6 : 1,
+              cursor: submitDisabled ? "not-allowed" : "pointer",
+            }}
+            disabled={submitDisabled}
             onClick={type === "login" ? handleLogin : handleRegister}
           >
             {loading ? "Hetki..." : (type === "login" ? "Kirjaudu" : "Luo tunnus")}
@@ -184,10 +251,11 @@ function Popup({ type, onClose, setUser }) {
             {error}
           </div>
         )}
-        </div>
       </div>
+    </div>
   );
 }
+
 
 /* ---------- MENU ---------- */
 
