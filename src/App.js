@@ -17,9 +17,15 @@ export default function App() {
     () => [
       { title: "MathMaster", gameId: "math-master", src: "/unity/index.html" },
       { title: "MathBirdAdventure", gameId: "math-bird", src: "/bird/index.html" },
+      {
+        title: "SanaSanteri",
+        gameId: "sanasanteri",
+        src: "/sanasanteri/index.html", // <-- TÄMÄ polku Unityn WebGL buildiin
+      },
     ],
     []
   );
+
 
   const Header = () => (
     <div style={styles.headerBar}>
