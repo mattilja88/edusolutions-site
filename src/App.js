@@ -15,18 +15,28 @@ export default function App() {
   
   const games = useMemo(
     () => [
-      { title: "MathMaster", gameId: "math-master", src: "/unity/index.html" },
-      { title: "MathBirdAdventure", gameId: "math-bird", src: "/bird/index.html" },
+      { 
+        title: "MathMaster", 
+        gameId: "math-master", 
+        src: "/unity/index.html",
+        image: "/img/MathMaster.png",    // ← lisää kuva
+      },
+      { 
+        title: "MathBirdAdventure", 
+        gameId: "math-bird", 
+        src: "/bird/index.html",
+        image: "/img/MathBirdAdventures.png",      // ← lisää kuva
+      },
       {
         title: "SanaSanteri",
         gameId: "sanasanteri",
-        src: "/sanasanteri/index.html", // <-- TÄMÄ polku Unityn WebGL buildiin
+        src: "/sanasanteri/index.html",
+        image: "/img/SanaSanteri.png",   // ← lisää kuva
       },
     ],
     []
   );
-
-
+  
   const Header = () => (
     <div style={styles.headerBar}>
       {user ? (
@@ -269,14 +279,21 @@ function Menu({ games, onOpen }) {
   return (
     <div style={styles.menuContainer}>
       <h1 style={styles.title}>Oppimispelejä</h1>
-      <div style={styles.buttonList}>
+      <div style={styles.gameGrid}>
         {games.map((g) => (
           <button
             key={g.title}
-            style={styles.gameButton}
+            style={styles.gameCard}
             onClick={() => onOpen(g)}
           >
-            {g.title}
+            <div style={styles.gameImageWrap}>
+              <img
+                src={g.image}
+                alt={g.title}
+                style={styles.gameImage}
+              />
+            </div>
+            <div style={styles.gameCaption}>{g.title}</div>
           </button>
         ))}
       </div>
@@ -335,25 +352,23 @@ function GameFrame({ title, src, gameId, user, onBack }) {
         return () => window.removeEventListener("message", onMessage);
     }, [user, gameToken]);
     
-      
-
-  return (
-    <div style={styles.gameWrap}>
-      <button style={styles.backBtn} onClick={onBack}>
-        ← Takaisin
-      </button>
-      {!isMobile && <h2 style={styles.gameTitle}>{title}</h2>}
-      <div style={styles.fit16x9}>
-        <iframe
-          ref={iframeRef}
-          title={title}
-          src={src}
-          allow="fullscreen; autoplay; gamepad"
-          style={styles.iframeFill}
-        />
+    return (
+      <div style={styles.gameWrap}>
+        <button style={styles.backBtn} onClick={onBack}>
+          ← Takaisin
+        </button>
+        {!isMobile && <h2 style={styles.gameTitle}>{title}</h2>}
+        <div style={isMobile ? styles.fitMobile : styles.fit16x9}>
+          <iframe
+            ref={iframeRef}
+            title={title}
+            src={src}
+            allow="fullscreen; autoplay; gamepad"
+            style={styles.iframeFill}
+          />
+        </div>
       </div>
-    </div>
-  );
+    );  
 }
 
 /* ---------- TYYLIT ---------- */
@@ -434,6 +449,7 @@ const styles = {
   },
 
   /* MENU */
+  // MENU
   menuContainer: {
     minHeight: "100svh",
     display: "flex",
@@ -449,7 +465,54 @@ const styles = {
     fontSize: "2.4rem",
     color: "#e05682",
     marginBottom: "2rem",
+    textAlign: "center",
   },
+
+  // UUSI: kuvakorttigridi
+  gameGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: "1.5rem",
+    width: "min(90vw, 700px)",
+  },
+
+  gameCard: {
+    background: "#fff",
+    border: "none",
+    borderRadius: "16px",
+    padding: "0.8rem 0.8rem 1rem",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    cursor: "pointer",
+    transition: "transform 0.15s ease, box-shadow 0.15s ease",
+    transform: "translateY(0)",
+  },
+
+  gameImageWrap: {
+    width: "100%",
+    aspectRatio: "16 / 9",
+    borderRadius: "12px",
+    overflow: "hidden",
+    marginBottom: "0.7rem",
+    background: "#eee",
+  },
+
+  gameImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+
+  gameCaption: {
+    fontSize: "1.05rem",
+    fontWeight: 600,
+    color: "#e05682",
+    textAlign: "center",
+  },
+
   buttonList: {
     display: "flex",
     flexDirection: "column",
@@ -490,12 +553,24 @@ const styles = {
     placeItems: "center",
     background: "#000",
   },
+
+  fitMobile: {
+    width: "100svw",
+    height: "calc(100svh - 3.5rem)", // header + back-nappi
+    maxWidth: "100svw",
+    maxHeight: "calc(100svh - 3.5rem)",
+    display: "grid",
+    placeItems: "center",
+    background: "#000",
+  },
+
   iframeFill: {
     width: "100%",
     height: "100%",
     border: "none",
     display: "block",
   },
+
   backBtn: {
     position: "absolute",
     top: "1rem",
