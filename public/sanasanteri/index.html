@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Unity Web Player | Sanasanteri</title>
+    <title>Unity Web Player | Sanasanter</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico" />
     <link rel="stylesheet" href="TemplateData/style.css" />
 
@@ -15,7 +15,7 @@
         background: #000;
       }
 
-      /* Täyttölaatikko, joka keskittää pelin (koko iframe/ikkuna) */
+      /* Täyttölaatikko, joka keskittää pelin (koko selainikkuna / iframe) */
       #unity-container {
         width: 100svw;
         height: 100svh;
@@ -26,7 +26,7 @@
         overflow: hidden;
       }
 
-      /* 16:9 "fit"-laatikko, joka mahtuu näyttöön */
+      /* 16:9 “fit”-laatikko, joka mahtuu näyttöön */
       #unity-fit {
         width: min(100svw, calc(100svh * (16 / 9)));
         height: min(100svh, calc(100svw * (9 / 16)));
@@ -46,7 +46,7 @@
       }
 
       @media (orientation: portrait) {
-        /* Pieni säätö pystyruudulle – vähän tilaa esim. selaimen osoitepalkille */
+        /* Pystyasennossa jätetään vähän tilaa esim. selaimen osoitepalkille */
         #unity-fit {
           height: min(96svh, calc(100svw * (9 / 16)));
         }
@@ -112,14 +112,14 @@
         productVersion: "1.0",
         showBanner: unityShowBanner,
 
-        /* 🔑 tärkeät lisäykset responsiivisuuteen */
+        // 🔑 tärkeät lisäykset responsiivisuutta varten:
         matchWebGLToCanvasSize: true,
         devicePixelRatio: /Mobi|Android|iPhone/i.test(navigator.userAgent)
           ? 1
           : window.devicePixelRatio,
       };
 
-      // Mobiili – lisää viewport-meta ja mobiilityylit
+      // Mobiili: viewport-meta + mobiilityylit
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         var meta = document.createElement("meta");
         meta.name = "viewport";
@@ -131,14 +131,12 @@
         canvas.className = "unity-mobile";
       }
 
-      // HUOM: ei enää desktopille kiinteää 1366x768-tyylittelyä – CSS hoitaa koon
-      // (poistettu: canvas.style.width/height = "1366px"/"768px")
+      // HUOM: ei enää desktopille kiinteää 1366x768-tyyliä – CSS hoitaa koon
 
       document.querySelector("#unity-loading-bar").style.display = "block";
 
       var script = document.createElement("script");
-      script.src = loaderUrl; // halutessa voit lisätä ?v=Date.now() cache-bustaukseen
-
+      script.src = loaderUrl; // halutessa voit lisätä "?v=" + Date.now() cache-bustaukseen
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
           document.querySelector("#unity-progress-bar-full").style.width =
