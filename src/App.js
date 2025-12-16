@@ -1,42 +1,49 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
-import { apiPost, API_BASE_URL  } from "./config/api"; // säädä polku suhteessa tähän tiedostoon
+import React, { useState, useMemo, useEffect } from "react";
+import { apiPost } from "./config/api";
 import { puhdasNimimerkki } from "./utils/puhdasNimimerkki";
-
+import PlayPage from "./components/PlayPage"; // <-- UUSI
 
 export default function App() {
-  const [selectedGame, setSelectedGame] = useState(null);
   const [activePopup, setActivePopup] = useState(null); // "login" | "register" | null
   const [user, setUser] = useState(null); // null = ei kirjautunut
+
+  const [activeGame, setActiveGame] = useState(null); // <-- UUSI: {title, gameId, url, image} | null
 
   useEffect(() => {
     const savedUser = localStorage.getItem("username");
     if (savedUser) setUser({ username: savedUser });
   }, []);
-  
+
   const games = useMemo(
     () => [
-      { 
-        title: "MathMaster", 
-        gameId: "math-master", 
-        src: "/unity/index.html",
-        image: "/img/MathMaster.png",    // ← lisää kuva
+      {
+        title: "MathMaster",
+        gameId: "math-master",
+        url: "https://storage.googleapis.com/mathmaster-136c9.firebasestorage.app/Mathmaster/index.html",
+        image: "/img/MathMaster.png",
       },
-      { 
-        title: "MathBirdAdventure", 
-        gameId: "math-bird", 
-        src: "/bird/index.html",
-        image: "/img/MathBirdAdventures.png",      // ← lisää kuva
+      {
+        title: "MathBirdAdventure",
+        gameId: "math-bird",
+        url: "https://storage.googleapis.com/mathmaster-136c9.firebasestorage.app/MathBirdAdventures/index.html",
+        image: "/img/MathBirdAdventures.png",
       },
       {
         title: "SanaSanteri",
         gameId: "sanasanteri",
-        src: "/sanasanteri/index.html",
-        image: "/img/SanaSanteri.png",   // ← lisää kuva
+        url: "https://storage.googleapis.com/mathmaster-136c9.firebasestorage.app/Sanasanteri/index.html",
+        image: "/img/SanaSanteri.png",
       },
     ],
     []
   );
-  
+
+  function openGame(game) {
+    // ÄLÄ avaa uuteen välilehteen, jotta voidaan hallita fullscreen/orientaatio:
+    setActiveGame(game);
+    setActivePopup(null);
+  }
+
   const Header = () => (
     <div style={styles.headerBar}>
       {user ? (
@@ -47,8 +54,8 @@ export default function App() {
             onClick={() => {
               localStorage.removeItem("jwt");
               localStorage.removeItem("username");
-              setSelectedGame(null);
               setUser(null);
+              setActivePopup(null);
             }}
           >
             Kirjaudu ulos
@@ -75,7 +82,6 @@ export default function App() {
         </>
       )}
 
-      {/* Popupit */}
       {activePopup && (
         <Popup
           type={activePopup}
@@ -84,28 +90,23 @@ export default function App() {
         />
       )}
     </div>
-
   );
 
-  if (selectedGame) {
+  // Jos peli on valittu, näytetään PlayPage koko ruudun näkymänä
+  if (activeGame) {
     return (
-      <>
-        <Header />
-        <GameFrame
-          title={selectedGame.title}
-          src={selectedGame.src}
-          gameId={selectedGame.gameId}
-          user={user}
-          onBack={() => setSelectedGame(null)}
-        />
-      </>
+      <PlayPage
+        gameUrl={activeGame.url}
+        title={activeGame.title}
+        onExit={() => setActiveGame(null)}
+      />
     );
   }
 
   return (
     <>
       <Header />
-      <Menu games={games} onOpen={(g) => setSelectedGame(g)} />
+      <Menu games={games} onOpen={openGame} />
     </>
   );
 }
@@ -114,29 +115,25 @@ export default function App() {
 
 function Popup({ type, onClose, setUser }) {
   const title = type === "login" ? "Kirjaudu" : "Luo tunnus";
-
-  // --- Lisätyt kentät rekisteriin ---
-  const INVITE_CODE = "OPETUS2025"; // <-- kevyt kovakoodaus fronttiin
+  const INVITE_CODE = "OPETUS2025";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [password2, setPassword2] = useState("");   // uusi
-  const [inviteCode, setInviteCode] = useState(""); // uusi
+  const [password2, setPassword2] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Yksinkertaiset validoinnit
+  const usernameEmpty = username.trim().length === 0;
   const pwTooShort = password.length < 6;
   const pwMismatch = password !== password2;
   const codeInvalid = type === "register" && inviteCode.trim() !== INVITE_CODE;
-  const usernameEmpty = username.trim().length === 0;
 
   async function handleRegister() {
     if (type !== "register") return;
     setError("");
 
-    // kevyt validointi ennen pyyntöä
     if (usernameEmpty) return setError("Käyttäjänimi puuttuu.");
     if (pwTooShort) return setError("Salasanan vähimmäispituus on 6 merkkiä.");
     if (pwMismatch) return setError("Salasanat eivät täsmää.");
@@ -144,16 +141,18 @@ function Popup({ type, onClose, setUser }) {
 
     try {
       setLoading(true);
+
       const check = puhdasNimimerkki(username);
       if (!check.ok) {
         setError(check.reason);
         return;
       }
+
       const data = await apiPost("/api/accounts/register", { username, password });
       alert(`Käyttäjä luotu: ${data.username}`);
       onClose();
     } catch (e) {
-      setError(e.message || "Rekisteröinti epäonnistui.");
+      setError(e?.message || "Rekisteröinti epäonnistui.");
     } finally {
       setLoading(false);
     }
@@ -169,12 +168,14 @@ function Popup({ type, onClose, setUser }) {
     try {
       setLoading(true);
       const { jwtToken } = await apiPost("/api/login", { username, password });
+
       localStorage.setItem("jwt", jwtToken);
       localStorage.setItem("username", username);
+
       setUser({ username });
       onClose();
     } catch (e) {
-      setError(e.message || "Kirjautuminen epäonnistui.");
+      setError(e?.message || "Kirjautuminen epäonnistui.");
     } finally {
       setLoading(false);
     }
@@ -185,14 +186,13 @@ function Popup({ type, onClose, setUser }) {
     usernameEmpty ||
     (type === "login"
       ? password.length === 0
-      : (pwTooShort || pwMismatch || codeInvalid));
+      : pwTooShort || pwMismatch || codeInvalid);
 
   return (
     <div style={styles.popupWrap}>
       <div style={styles.popupBox}>
         <h3 style={styles.popupTitle}>{title}</h3>
 
-        {/* käyttäjänimi */}
         <input
           type="text"
           placeholder="Käyttäjänimi"
@@ -202,7 +202,6 @@ function Popup({ type, onClose, setUser }) {
           autoComplete={type === "login" ? "username" : "new-username"}
         />
 
-        {/* salasana */}
         <input
           type="password"
           placeholder="Salasana"
@@ -212,7 +211,6 @@ function Popup({ type, onClose, setUser }) {
           autoComplete={type === "login" ? "current-password" : "new-password"}
         />
 
-        {/* vain rekisteröinnissä: salasana uudestaan + kutsukoodi */}
         {type === "register" && (
           <>
             <input
@@ -220,27 +218,34 @@ function Popup({ type, onClose, setUser }) {
               placeholder="Salasana uudelleen"
               style={{
                 ...styles.input,
-                borderColor: password2.length === 0
-                  ? "#ccc"
-                  : (pwMismatch ? "#d32f2f" : "#4caf50"),
+                borderColor:
+                  password2.length === 0
+                    ? "#ccc"
+                    : pwMismatch
+                    ? "#d32f2f"
+                    : "#4caf50",
               }}
               value={password2}
               onChange={(e) => setPassword2(e.target.value)}
               autoComplete="new-password"
             />
+
             <input
               type="text"
               placeholder="Kutsukoodi"
               style={{
                 ...styles.input,
-                borderColor: inviteCode.length === 0
-                  ? "#ccc"
-                  : (codeInvalid ? "#d32f2f" : "#4caf50"),
+                borderColor:
+                  inviteCode.length === 0
+                    ? "#ccc"
+                    : codeInvalid
+                    ? "#d32f2f"
+                    : "#4caf50",
               }}
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
             />
-            {/* pienet vihjeet */}
+
             <div style={{ fontSize: "0.8rem", color: "#666", marginBottom: "0.4rem" }}>
               Vihje: salasanassa vähintään 6 merkkiä.
             </div>
@@ -257,9 +262,12 @@ function Popup({ type, onClose, setUser }) {
             disabled={submitDisabled}
             onClick={type === "login" ? handleLogin : handleRegister}
           >
-            {loading ? "Hetki..." : (type === "login" ? "Kirjaudu" : "Luo tunnus")}
+            {loading ? "Hetki..." : type === "login" ? "Kirjaudu" : "Luo tunnus"}
           </button>
-          <button style={styles.cancelBtn} onClick={onClose}>Peruuta</button>
+
+          <button style={styles.cancelBtn} onClick={onClose}>
+            Peruuta
+          </button>
         </div>
 
         {error && (
@@ -272,26 +280,23 @@ function Popup({ type, onClose, setUser }) {
   );
 }
 
-
 /* ---------- MENU ---------- */
 
 function Menu({ games, onOpen }) {
   return (
     <div style={styles.menuContainer}>
       <h1 style={styles.title}>Oppimispelejä</h1>
+
       <div style={styles.gameGrid}>
         {games.map((g) => (
           <button
             key={g.title}
             style={styles.gameCard}
             onClick={() => onOpen(g)}
+            type="button"
           >
             <div style={styles.gameImageWrap}>
-              <img
-                src={g.image}
-                alt={g.title}
-                style={styles.gameImage}
-              />
+              <img src={g.image} alt={g.title} style={styles.gameImage} />
             </div>
             <div style={styles.gameCaption}>{g.title}</div>
           </button>
@@ -299,76 +304,6 @@ function Menu({ games, onOpen }) {
       </div>
     </div>
   );
-}
-
-/* ---------- PELI ---------- */
-
-function GameFrame({ title, src, gameId, user, onBack }) {
-  const UNITY_ORIGIN = window.location.origin;
-  const iframeRef = useRef(null);
-  const [gameToken, setGameToken] = useState(null);
-  const isMobile =
-    /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ||
-    (typeof window !== "undefined" && window.innerWidth < 768);
-
-    useEffect(() => {
-        // Ei käyttäjää → ei hakua
-        if (!user || !user.username || !gameId) return;
-        let aborted = false;
-        (async () => {
-          try {
-            const jwt = localStorage.getItem("jwt");
-            const res = await fetch(`${API_BASE_URL}/api/me/game-token?gameId=${encodeURIComponent(gameId)}`, {
-              method: "GET",
-              headers: {
-                "Authorization": jwt ? `Bearer ${jwt}` : "",
-              },
-              credentials: "include",
-            });
-            if (!res.ok) throw new Error("Game token haku epäonnistui");
-            const data = await res.json(); // odotetaan: { gameToken: "..." }
-            if (!aborted) setGameToken(data.gameToken);
-          } catch (e) {
-            console.error(e);
-          }
-      })();
-    return () => { aborted = true; };
-  }, [user, gameId]);
-
-    useEffect(() => {
-        function onMessage(ev) {
-          if (!iframeRef.current || ev.source !== iframeRef.current.contentWindow) return;
-          if (ev.data?.type !== "UNITY_READY") return;
-          if (!user || !user.username || !gameToken) return;
-    
-          const payload = {
-            type: "INIT",
-            user: { userId: user.username, displayName: user.username },
-            gameToken,
-          };
-          iframeRef.current.contentWindow.postMessage(payload, UNITY_ORIGIN);
-        }
-        window.addEventListener("message", onMessage);
-        return () => window.removeEventListener("message", onMessage);
-    }, [user, gameToken]);
-    
-    return (
-      <div style={styles.gameWrap}>
-        <button style={styles.backBtn} onClick={onBack}>
-          ← Takaisin
-        </button>
-        {!isMobile && <h2 style={styles.gameTitle}>{title}</h2>}
-        <div style={isMobile ? styles.fitMobile : styles.fit16x9}>
-          <iframe
-            ref={iframeRef}
-            title={title}
-            src={src}
-            allow="fullscreen; autoplay; gamepad"
-            style={styles.iframeFill}
-          />
-        </div>
-      </div>
-    );  
 }
 
 /* ---------- TYYLIT ---------- */
@@ -392,6 +327,13 @@ const styles = {
     fontSize: "0.95rem",
     borderRadius: "10px",
     cursor: "pointer",
+  },
+  usernameText: {
+    alignSelf: "center",
+    color: "#ff80ab",
+    fontWeight: "600",
+    fontSize: "1rem",
+    paddingRight: "0.5rem",
   },
 
   /* POPUP */
@@ -449,7 +391,6 @@ const styles = {
   },
 
   /* MENU */
-  // MENU
   menuContainer: {
     minHeight: "100svh",
     display: "flex",
@@ -467,15 +408,12 @@ const styles = {
     marginBottom: "2rem",
     textAlign: "center",
   },
-
-  // UUSI: kuvakorttigridi
   gameGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: "1.5rem",
     width: "min(90vw, 700px)",
   },
-
   gameCard: {
     background: "#fff",
     border: "none",
@@ -489,7 +427,6 @@ const styles = {
     transition: "transform 0.15s ease, box-shadow 0.15s ease",
     transform: "translateY(0)",
   },
-
   gameImageWrap: {
     width: "100%",
     aspectRatio: "16 / 9",
@@ -498,98 +435,16 @@ const styles = {
     marginBottom: "0.7rem",
     background: "#eee",
   },
-
   gameImage: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
     display: "block",
   },
-
   gameCaption: {
     fontSize: "1.05rem",
     fontWeight: 600,
     color: "#e05682",
     textAlign: "center",
   },
-
-  buttonList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "1rem",
-    width: "min(90vw, 420px)",
-  },
-  gameButton: {
-    background: "#ff80ab",
-    color: "#fff",
-    border: "none",
-    padding: "1rem 2rem",
-    fontSize: "1.1rem",
-    borderRadius: "14px",
-    cursor: "pointer",
-  },
-
-  /* GAME */
-  gameWrap: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    minHeight: "100svh",
-    background: "#000",
-    flexDirection: "column",
-    overflow: "hidden",
-    paddingTop: "3.5rem",
-  },
-  gameTitle: {
-    color: "#fff",
-    marginBottom: "1rem",
-    fontFamily: "Press Start 2P, monospace",
-    fontSize: "1.2rem",
-  },
-  fit16x9: {
-    width: "min(100svw, calc(100svh * (16 / 9)))",
-    height: "min(100svh, calc(100svw * (9 / 16)))",
-    display: "grid",
-    placeItems: "center",
-    background: "#000",
-  },
-
-  fitMobile: {
-    width: "100svw",
-    height: "calc(100svh - 3.5rem)", // header + back-nappi
-    maxWidth: "100svw",
-    maxHeight: "calc(100svh - 3.5rem)",
-    display: "grid",
-    placeItems: "center",
-    background: "#000",
-  },
-
-  iframeFill: {
-    width: "100%",
-    height: "100%",
-    border: "none",
-    display: "block",
-  },
-
-  backBtn: {
-    position: "absolute",
-    top: "1rem",
-    left: "1rem",
-    background: "#ff80ab",
-    color: "#fff",
-    border: "none",
-    padding: "0.6rem 1rem",
-    borderRadius: "10px",
-    cursor: "pointer",
-    fontSize: "1rem",
-    zIndex: 10,
-  },
-  usernameText: {
-    alignSelf: "center",
-    color: "#ff80ab",
-    fontWeight: "600",
-    fontSize: "1rem",
-    paddingRight: "0.5rem",
-  },
-  
 };
