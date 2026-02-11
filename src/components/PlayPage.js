@@ -39,6 +39,50 @@ export default function PlayPage({ gameId, gameUrl, title, onExit }) {
   const [fsActive, setFsActive] = useState(false);
   const [status, setStatus] = useState(""); // infoteksi käyttäjälle
 
+  function getAuthPayload() {
+    return {
+      idToken: localStorage.getItem("idToken") || "",
+      username: localStorage.getItem("username") || "",
+    };
+  }
+  
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !game?.url) return;
+  
+    const GAME_ORIGIN = new URL(game.url).origin;
+  
+    const sendAuth = () => {
+      const { idToken, username } = getAuthPayload();
+      if (!idToken) return;
+  
+      iframe.contentWindow?.postMessage(
+        { type: "AUTH", idToken, username },
+        GAME_ORIGIN
+      );
+    };
+  
+    const onMessage = (event) => {
+      if (event.origin !== GAME_ORIGIN) return;
+  
+      if (
+        event.data?.type === "READY_FOR_AUTH" ||
+        event.data?.type === "REQUEST_AUTH"
+      ) {
+        sendAuth();
+      }
+    };
+  
+    window.addEventListener("message", onMessage);
+    iframe.addEventListener("load", sendAuth);
+  
+    return () => {
+      window.removeEventListener("message", onMessage);
+      iframe.removeEventListener("load", sendAuth);
+    };
+  }, [game?.url]);
+  
+
   // Viewport meta (jos appissa ei ole valmiiksi)
   useEffect(() => {
     const existing = document.querySelector('meta[name="viewport"]');

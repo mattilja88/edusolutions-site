@@ -6,14 +6,24 @@ import PlayPage from "./components/PlayPage"; // <-- UUSI
 export default function App() {
   const [activePopup, setActivePopup] = useState(null); // "login" | "register" | null
   const [user, setUser] = useState(null); // null = ei kirjautunut
-
+  const [guestPopupOpen, setGuestPopupOpen] = useState(false);
+  const [pendingGame, setPendingGame] = useState(null);
   const [activeGame, setActiveGame] = useState(null); // <-- UUSI: {title, gameId, url, image} | null
 
   useEffect(() => {
     const savedUser = localStorage.getItem("username");
-    if (savedUser) setUser({ username: savedUser });
+    const token = localStorage.getItem("idToken");
+    if (savedUser && token) {
+      setUser({ username: savedUser });
+    }
   }, []);
 
+  function isLoggedIn() {
+    const token = localStorage.getItem("idToken");
+    const name = localStorage.getItem("username");
+    return !!(token && name);
+  }
+  
   const games = useMemo(
     () => [
       {
@@ -39,11 +49,18 @@ export default function App() {
   );
 
   function openGame(game) {
-    // ÄLÄ avaa uuteen välilehteen, jotta voidaan hallita fullscreen/orientaatio:
+    if (!isLoggedIn()) {
+      setPendingGame(game);
+      setGuestPopupOpen(true);
+      setActivePopup(null);
+      return;
+    }
+  
+    // kirjautunut -> suoraan peliin
     setActiveGame(game);
     setActivePopup(null);
   }
-
+  
   const Header = () => (
     <div style={styles.headerBar}>
       {user ? (
@@ -52,7 +69,6 @@ export default function App() {
           <button
             style={styles.headerBtn}
             onClick={() => {
-              localStorage.removeItem("jwt");
               localStorage.removeItem("username");
               setUser(null);
               setActivePopup(null);
@@ -106,9 +122,28 @@ export default function App() {
   return (
     <>
       <Header />
+  
+      {guestPopupOpen && (
+        <GuestInvitePopup
+          onCancel={() => {
+            setGuestPopupOpen(false);
+            setPendingGame(null);
+          }}
+          onOk={() => {
+            // Tässä voit halutessa tarkistaa kutsukoodin sisällön GuestInvitePopupissa
+            // ja välittää validin takaisin. Nyt avataan peli vaikka "guest" moodissa.
+            if (pendingGame) {
+              setActiveGame(pendingGame);
+            }
+            setGuestPopupOpen(false);
+            setPendingGame(null);
+          }}
+        />
+      )}
+  
       <Menu games={games} onOpen={openGame} />
     </>
-  );
+  );  
 }
 
 /* ---------- POPUP ---------- */
@@ -133,23 +168,24 @@ function Popup({ type, onClose, setUser }) {
   async function handleRegister() {
     if (type !== "register") return;
     setError("");
-
+  
     if (usernameEmpty) return setError("Käyttäjänimi puuttuu.");
     if (pwTooShort) return setError("Salasanan vähimmäispituus on 6 merkkiä.");
     if (pwMismatch) return setError("Salasanat eivät täsmää.");
     if (codeInvalid) return setError("Väärä kutsukoodi.");
-
+  
     try {
       setLoading(true);
-
+  
       const check = puhdasNimimerkki(username);
       if (!check.ok) {
         setError(check.reason);
         return;
       }
-
-      const data = await apiPost("/api/accounts/register", { username, password });
-      alert(`Käyttäjä luotu: ${data.username}`);
+  
+      await apiPost("/register", { username, password });
+  
+      alert("Käyttäjä luotu. Voit kirjautua.");
       onClose();
     } catch (e) {
       setError(e?.message || "Rekisteröinti epäonnistui.");
@@ -161,18 +197,21 @@ function Popup({ type, onClose, setUser }) {
   async function handleLogin() {
     if (type !== "login") return;
     setError("");
-
+  
     if (usernameEmpty) return setError("Käyttäjänimi puuttuu.");
     if (password.length === 0) return setError("Salasana puuttuu.");
-
+  
     try {
       setLoading(true);
-      const { jwtToken } = await apiPost("/api/login", { username, password });
-
-      localStorage.setItem("jwt", jwtToken);
-      localStorage.setItem("username", username);
-
-      setUser({ username });
+  
+      // 🔥 Firebase Functions login
+      const data = await apiPost("/login", { username, password });
+  
+      // 🔐 Tallenna Firebase-token
+      localStorage.setItem("idToken", data.idToken);
+      localStorage.setItem("username", data.displayName || username);
+  
+      setUser({ username: data.displayName || username });
       onClose();
     } catch (e) {
       setError(e?.message || "Kirjautuminen epäonnistui.");
@@ -180,6 +219,7 @@ function Popup({ type, onClose, setUser }) {
       setLoading(false);
     }
   }
+  
 
   const submitDisabled =
     loading ||
@@ -280,6 +320,62 @@ function Popup({ type, onClose, setUser }) {
   );
 }
 
+function GuestInvitePopup({ onCancel, onOk }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+
+  const INVITE_CODE = "OPETUS2025";
+
+  function handleOk() {
+    setError("");
+
+    if (code.trim().length === 0) {
+      setError("Kutsukoodi puuttuu.");
+      return;
+    }
+    if (code.trim() !== INVITE_CODE) {
+      setError("Väärä kutsukoodi.");
+      return;
+    }
+
+    onOk();
+  }
+
+  return (
+    <div style={styles.centerOverlay}>
+      <div style={styles.centerPopup}>
+        <h3 style={styles.centerPopupTitle}>Et ole kirjautunut sisään</h3>
+
+        <div style={styles.centerPopupText}>
+          Voit pelata peliä kutsukoodilla.
+        </div>
+
+        <input
+          type="text"
+          placeholder="Kutsukoodi"
+          style={styles.input}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+
+        {error && (
+          <div style={{ color: "#d32f2f", fontSize: "0.85rem", marginBottom: "0.6rem" }}>
+            {error}
+          </div>
+        )}
+
+        <div style={styles.popupButtons}>
+          <button style={styles.cancelBtn} onClick={onCancel}>
+            Peruuta
+          </button>
+          <button style={styles.submitBtn} onClick={handleOk}>
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 /* ---------- MENU ---------- */
 
 function Menu({ games, onOpen }) {
@@ -447,4 +543,34 @@ const styles = {
     color: "#e05682",
     textAlign: "center",
   },
+  centerOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.55)",
+    display: "grid",
+    placeItems: "center",
+    zIndex: 9999,
+    padding: "1rem",
+  },
+  centerPopup: {
+    width: "min(360px, 92vw)",
+    background: "#fff",
+    borderRadius: "12px",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+    padding: "1rem",
+    display: "flex",
+    flexDirection: "column",
+  },
+  centerPopupTitle: {
+    margin: "0 0 0.4rem 0",
+    textAlign: "center",
+    fontSize: "1.1rem",
+    color: "#ff4081",
+  },
+  centerPopupText: {
+    textAlign: "center",
+    fontSize: "0.92rem",
+    color: "#333",
+    marginBottom: "0.8rem",
+  },  
 };

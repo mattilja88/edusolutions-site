@@ -75,6 +75,25 @@
     </div>
 
     <script>
+
+      const REACT_ORIGIN = "https://mathmaster-136c9.web.app";
+
+      function setupAuthBridge(unityInstance) {
+        window.parent.postMessage({ type: "READY_FOR_AUTH" }, REACT_ORIGIN);
+
+        window.addEventListener("message", (event) => {
+          if (event.origin !== REACT_ORIGIN) return;
+
+          if (event.data?.type === "AUTH") {
+            unityInstance.SendMessage(
+              "AuthBridge",
+              "OnAuthMessage",
+              JSON.stringify(event.data)
+            );
+          }
+        });
+      }
+
       var canvas = document.querySelector("#unity-canvas");
 
       function unityShowBanner(msg, type) {
@@ -142,12 +161,16 @@
           document.querySelector("#unity-progress-bar-full").style.width =
             100 * progress + "%";
         })
-          .then((unityInstance) => {
-            document.querySelector("#unity-loading-bar").style.display = "none";
-            document.querySelector("#unity-fullscreen-button").onclick = () => {
-              unityInstance.SetFullscreen(1);
-            };
-          })
+        .then((unityInstance) => {
+          document.querySelector("#unity-loading-bar").style.display = "none";
+
+          // 🔥 TÄMÄ RIVI PUUTTUI
+          setupAuthBridge(unityInstance);
+
+          document.querySelector("#unity-fullscreen-button").onclick = () => {
+            unityInstance.SetFullscreen(1);
+          };
+        })
           .catch((message) => {
             alert(message);
           });
