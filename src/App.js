@@ -41,7 +41,7 @@ export default function App() {
       {
         title: "SanaSanteri",
         gameId: "sanasanteri",
-        url: "https://storage.googleapis.com/mathmaster-136c9.firebasestorage.app/Sanasanteri/index.html",
+        url: "https://storage.googleapis.com/mathmaster-136c9.firebasestorage.app/Sanasanteri/index.html?v=20260216",
         image: "/img/SanaSanteri.png",
       },
     ],

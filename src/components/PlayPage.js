@@ -38,6 +38,7 @@ export default function PlayPage({ gameId, gameUrl, title, onExit }) {
   const [isPortrait, setIsPortrait] = useState(false);
   const [fsActive, setFsActive] = useState(false);
   const [status, setStatus] = useState(""); // infoteksi käyttäjälle
+  const [gameOrigin, setGameOrigin] = useState(null);
 
   function getAuthPayload() {
     return {
@@ -45,6 +46,43 @@ export default function PlayPage({ gameId, gameUrl, title, onExit }) {
       username: localStorage.getItem("username") || "",
     };
   }
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !game?.url) return;
+  
+    const onMessage = (event) => {
+      // HUOM: event.origin on iframen origin
+      if (event.data?.type === "READY_FOR_AUTH") {
+        setGameOrigin(event.origin); // <- oikea origin talteen
+        sendAuth(event.origin);      // <- lähetä heti
+      }
+      if (event.data?.type === "REQUEST_AUTH") {
+        sendAuth(event.origin);
+      }
+    };
+  
+    function sendAuth(targetOrigin) {
+      const idToken = localStorage.getItem("idToken") || "";
+      const username = localStorage.getItem("username") || "";
+      if (!idToken) return;
+  
+      iframe.contentWindow?.postMessage(
+        { type: "AUTH", idToken, username },
+        targetOrigin || "*"
+      );
+    }
+  
+    window.addEventListener("message", onMessage);
+    iframe.addEventListener("load", () => {
+      // jos gameOrigin jo tiedossa, lähetä
+      if (gameOrigin) sendAuth(gameOrigin);
+    });
+  
+    return () => {
+      window.removeEventListener("message", onMessage);
+    };
+  }, [game?.url, gameOrigin]);
   
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -58,7 +96,7 @@ export default function PlayPage({ gameId, gameUrl, title, onExit }) {
   
       iframe.contentWindow?.postMessage(
         { type: "AUTH", idToken, username },
-        GAME_ORIGIN
+        "*"
       );
     };
   
